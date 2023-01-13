@@ -32,8 +32,7 @@
   (let [[sub t]     (type b env)
         t-sub       (t/generalize (t/sub env sub) t)
         env         (t/add env x t-sub)
-        t-env-sub   (t/sub env sub)
-        [sub' t-in] (type in t-env-sub)]
+        [sub' t-in] (type in (t/sub env sub))]
     [(t/join-subs sub sub') t-in]))
 
 (defn infer [expr & [env]]
