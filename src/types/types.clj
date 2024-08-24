@@ -47,9 +47,9 @@
       t)
     Type
     (unify [t o]
-      (if (TypeVar? o)
-        (unify o t)
-        {}))))
+      (when-not (TypeVar? o)
+        (throw (ex-info (str "Can't unify with " o) {:type o})))
+      (unify o t))))
 
 (def Int  (anon-t))
 (def Bool (anon-t))
@@ -60,16 +60,20 @@
   (sub  [_ e] (->Fn (sub l e) (sub r e)))
   Type
   (unify [t o]
-    (when-not (Fn? o)
-      (throw (ex-info "Can't unify fn w/" {:other o :types [t o]})))
-    (join-subs (unify l (:l o)) (unify r (:r o)))))
+    (cond (TypeVar? o) (unify o t)
+          (Fn? o)      (let [sub'  (unify l (:l o))
+                             sub'' (unify (sub r sub') (sub (:r o) sub'))]
+                         (join-subs sub' sub''))
+          :else
+          (throw (ex-info (str "Can't unify fn w/ " (type o)) {:other o :types [t o]})))))
 
 (def Fn? (partial instance? Fn))
 
 (defrecord TypeVar [name]
   TypeLike
   (free [_]   #{name})
-  (sub  [t e] (or (e name) t))
+  (sub  [t e]
+    (e name t))
   TypeVariable
   (name [_] name)
   Type
@@ -88,7 +92,8 @@
       (->TypeScheme (sub t e) bound)))
   Scheme
   (instantiate [_]
-    (sub t (zipmap bound (repeatedly #(->TypeVar (c/*new-type-var*)))))))
+    (sub t (into {} (for [b bound]
+                      [(:name b) (->TypeVar (c/*new-type-var*))])))))
 
 (defrecord TypeEnv [schemes]
   TypeLike

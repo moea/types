@@ -8,7 +8,8 @@
 
 (defmethod type :expr/var [[_ name] env]
   (if-let [scheme (t/get* env name)]
-    [{} (t/instantiate scheme)]
+    (let [i (t/instantiate scheme)]
+      [{} i])
     (throw (ex-info "Unbound" {:var name :env env}))))
 
 (defmethod type :expr/literal [[_ literal] env]
@@ -22,7 +23,7 @@
 
 (defmethod type :expr/apply [[_ f x] env]
   (let [tvar        (t/->TypeVar (c/*new-type-var*))
-        [sub-f t-f] (type f  env)
+        [sub-f t-f] (type f env)
         [sub-x t-x] (type x (t/sub env sub-f))
         sub         (t/unify (t/sub t-f sub-x) (t/->Fn t-x tvar))
         csub        (t/join-subs sub (t/join-subs sub-x sub-f))]
@@ -47,6 +48,5 @@
           env  {"id"  (t/->TypeScheme (t/->Fn (t/->TypeVar tv) (t/->TypeVar tv)) #{tv})
                 "inc" (t/->TypeScheme (t/->Fn t/Int t/Int) #{})}
           expr [:expr/lambda "x"
-                [:expr/let "y" [:expr/apply [:expr/var "id"] [:expr/var "x"]]
-                 [:expr/apply [:expr/var "inc"] [:expr/var "x"]]]]]
+                [:expr/apply [:expr/var "id"] [:expr/var "x"]]]]
       (infer expr env))))
