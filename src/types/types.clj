@@ -104,7 +104,8 @@
        (for [[k scheme] schemes]
          [k (sub scheme e)]))))
   Env
-  (get* [_ v] (schemes v))
+  (get* [_ v]
+    (schemes v))
   (add  [_ v scheme]
     (->TypeEnv (assoc schemes v scheme)))
   (generalize [env t]
