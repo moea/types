@@ -5,8 +5,8 @@
 
 
 (let [current-id (atom 0)]
-  (defn new-var! [level]
-    (atom [:unbound (swap! current-id inc) level]))
+  (defn new-var! []
+    (atom [:unbound (swap! current-id inc)]))
 
   (defn new-generic-var! []
     (atom [:generic (swap! current-id inc)])))
@@ -16,34 +16,6 @@
 
 (defn maybe-deref [x]
   (cond-> x (atom? x) deref))
-
-(defn adjust-levels! [type-var-id level type]
-  (match type
-    [:type-app type' args]
-    (do
-      (adjust-levels! type-var-id level type')
-      (doseq [t args]
-        (adjust-levels! type-var-id level t)))
-    [:-> type-params ret-type]
-    (do
-      (doseq [t type-params]
-        (adjust-levels! type-var-id level t))
-      (adjust-levels! type-var-id level ret-type))
-    [:const _] nil
-    :else
-    (do
-      (println "MATCHING" type)
-      (match @type
-        [:link type']
-        (adjust-levels! type-var-id level type')
-        [:generic _]
-        (assert false)
-        [:unbound type-var-id' level']
-        (do
-          (assert (not= type-var-id type-var-id') "Recursive types")
-          (when (< level level')
-            (/ 1 0)
-            (reset! type [:unbound type-var-id' level])))))))
 
 (defn unify! [t o]
   (println "unify!" (maybe-deref t) (maybe-deref o))
@@ -73,34 +45,17 @@
           [_ [:link type]]
           (unify! t type)
 
-          [[:unbound id level] _]
-          (do (adjust-levels! id level o)
-              (reset! t [:link o]))
+          [[:unbound id] _]
+          (reset! t [:link o])
 
-          [_ [:unbound id level]]
-          (do (adjust-levels! id level t)
-              (reset! o [:link t]))
+          [_ [:unbound id]]
+          (reset! o [:link t])
 
           :else (do
                   (println "> "t' "\n" "> " o')
                   (assert false "Cannot unify types")))))))
 
-(defn generalize [level type]
-  (match type
-    [:type-app type' args]  [:type-app (generalize level type') (for [t args]
-                                                                  (generalize level t))]
-    [:-> params ret-t]      [:-> (for [t params]
-                                   (generalize level t)) (generalize level ret-t)]
-    [:const _]              type
-    :else
-    (match @type
-      [:generic _]          type
-      [:link type']         (generalize level type')
-      [:unbound id level'] (if (< level level')
-                             (atom [:generic id])
-                             type))))
-
-(defn instantiate [level t]
+(defn instantiate [t]
   (let [id->var (volatile! {})]
     (letfn [(f [t]
               (match t
@@ -110,13 +65,13 @@
                 :else
                 (do
                   (match @t
-                    [:unbound _ _] t
-                    [:link    t]   (f t)
-                    [:generic id]  (if-let [v (get @id->var id)]
-                                     v
-                                     (let [var (new-var! level)]
-                                       (vswap! id->var assoc id var)
-                                       var))))))]
+                    [:unbound _]  t
+                    [:link    t]  (f t)
+                    [:generic id] (if-let [v (get @id->var id)]
+                                    v
+                                    (let [var (new-var!)]
+                                      (vswap! id->var assoc id var)
+                                      var))))))]
       (f t))))
 
 
@@ -130,38 +85,32 @@
     (match @type
       [:link type']
       (match-fn-type n-params type')
-      [:unbound id level]
-      (let [params (for [i (range n-params)] (new-var! level))
-            ret-t  (new-var! level)]
-        (/ 1 0)
+      [:unbound id]
+      (let [params (for [i (range n-params)] (new-var!))
+            ret-t  (new-var!)]
         (reset! type [:link [:-> params ret-t]])
         [params ret-t]))))
 
-(defn infer [env level expr]
+(defn infer [env expr]
   (match expr
     [:var v-name]
     (do
       (if-let [t (env v-name)]
-        (instantiate level t)
+        (instantiate t)
         (assert false (str "Variable " v-name " not found"))))
     [:fun params body]
-    (let [params->types (zipmap params (repeatedly #(new-var! level)))
+    (let [params->types (zipmap params (repeatedly new-var!))
           fn-env        (merge env params->types)
-          ret-t         (infer fn-env level body)]
+          ret-t         (infer fn-env body)]
       [:-> (mapv params->types params) ret-t])
     [:let var vall body]
-    (let [var-type (infer env (inc level) vall)
-          gen-type (generalize level var-type)]
-      (infer (assoc env var gen-type) level body))
+    (let [var-type (infer env vall)]
+      (infer (assoc env var var-type) body))
     [:call fnn args]
-    (let [[param-types ret-type] (match-fn-type (count args) (infer env level fnn))]
+    (let [[param-types ret-type] (match-fn-type (count args) (infer env fnn))]
       (doseq [[p a] (map vector param-types args)]
-        (unify! p (infer env level a)))
+        (unify! p (infer env a)))
       ret-type)))
-
-(defn infer-fresh [env expr]
-  (infer env 0 expr))
-
 
 (defn constant-lookup [t env]
   (match t
@@ -172,11 +121,7 @@
                                               (constant-lookup a env))])
     [:-> param-types ret-t]
     [:-> (for [p param-types]
-           (constant-lookup p env)) (constant-lookup ret-t env)]
-    :else (do
-            (assert (atom? t) (str "Not an atom: " t))
-            t)
-    ))
+           (constant-lookup p env)) (constant-lookup ret-t env)]))
 
 (def reserved #{:for-all :-> :const :type-app :call :var :let :fun})
 
@@ -231,6 +176,6 @@
                       [:for-all '[a b] [:-> [[:-> ['a] 'b] [:type-app :list '[a]]] [:type-app :list '[b]]]]) {})
            }]
 
-  (infer-fresh env (convert
-                    '(cons one nil)))
+  (infer env (convert
+              '((lambda [x] (pair one x)) true)))
   )
