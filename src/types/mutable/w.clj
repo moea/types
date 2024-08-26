@@ -3,14 +3,12 @@
             [clojure.walk :as walk])
   (:refer-clojure :exclude [type name]))
 
-
 (let [current-id (atom 0)]
   (defn new-var! []
     (atom [:unbound (swap! current-id inc)]))
 
   (defn new-generic! []
     (atom [:generic (swap! current-id inc)])))
-
 
 (def atom? (partial instance? clojure.lang.Atom))
 
@@ -21,7 +19,7 @@
   (when (not= t o)
     (match [t o]
       [[:const n] [:const n']]
-      (assert (= n n') (str "Can't unify differing constants " n n'))
+      (assert (= n n') (str "Can't unify differing constants " n " " n'))
       [[:type-app type args] [:type-app type' args']]
       (do
         (unify! type type')
@@ -54,13 +52,13 @@
                 [:->       params ret-t] [:->       (map f params) (f ret-t)]
                 :else
                 (match @t
-                  [:unbound _]     t
-                  [:link    type]  (f type)
-                  [:generic id]    (if-let [v (get @id->var id)]
-                                     v
-                                     (let [var (new-var!)]
-                                       (vswap! id->var assoc id var)
-                                       var)))))]
+                  [:unbound _]    t
+                  [:link    type] (f type)
+                  [:generic id]   (if-let [v (get @id->var id)]
+                                    v
+                                    (let [var (new-var!)]
+                                      (vswap! id->var assoc id var)
+                                      var)))))]
       (f t))))
 
 
@@ -76,7 +74,7 @@
         [:link type']
         (match-fn-type! n-params type')
         [:unbound id]
-        (let [params (repeatedly n-params (new-var!))
+        (let [params (repeatedly n-params new-var!)
               ret-t  (new-var!)]
           (reset! type [:link [:-> params ret-t]])
           [params ret-t])))))
