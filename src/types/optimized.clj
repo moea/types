@@ -1,14 +1,14 @@
 (ns types.optimized
   (:require [clojure.core.match :refer [match]]
             [clojure.walk :as walk])
-  (:refer-clojure :exclude [type name eval apply]))
+  (:refer-clojure :exclude [type name]))
 
 
 (let [current-id (atom 0)]
   (defn new-var! []
     (atom [:unbound (swap! current-id inc)]))
 
-  (defn new-generic-var! []
+  (defn new-generic! []
     (atom [:generic (swap! current-id inc)])))
 
 
@@ -18,8 +18,7 @@
   (cond-> x (atom? x) deref))
 
 (defn unify! [t o]
-  (println "unify!" (maybe-deref t) (maybe-deref o))
-  (if (not= t o)
+  (when (not= t o)
     (match [t o]
       [[:const n] [:const n']]
       (assert (= n n') (str "Can't unify differing constants " n n'))
@@ -35,6 +34,7 @@
         (doseq [[t t'] (map vector types types')]
           (unify! t t'))
         (unify! ret-t ret-t'))
+
       :else
       (let [t' (maybe-deref t)
             o' (maybe-deref o)]
@@ -49,11 +49,7 @@
           (reset! t [:link o])
 
           [_ [:unbound id]]
-          (reset! o [:link t])
-
-          :else (do
-                  (println "> "t' "\n" "> " o')
-                  (assert false "Cannot unify types")))))))
+          (reset! o [:link t]))))))
 
 (defn instantiate [t]
   (let [id->var (volatile! {})]
@@ -63,15 +59,14 @@
                 [:type-app type args]    [:type-app (f type)       (map f args)]
                 [:->       params ret-t] [:->       (map f params) (f ret-t)]
                 :else
-                (do
-                  (match @t
-                    [:unbound _]  t
-                    [:link    t]  (f t)
-                    [:generic id] (if-let [v (get @id->var id)]
-                                    v
-                                    (let [var (new-var!)]
-                                      (vswap! id->var assoc id var)
-                                      var))))))]
+                (match @t
+                  [:unbound _]  t
+                  [:link    t]  (f t)
+                  [:generic id] (if-let [v (get @id->var id)]
+                                  v
+                                  (let [var (new-var!)]
+                                    (vswap! id->var assoc id var)
+                                    var)))))]
       (f t))))
 
 
@@ -86,7 +81,7 @@
       [:link type']
       (match-fn-type n-params type')
       [:unbound id]
-      (let [params (for [i (range n-params)] (new-var!))
+      (let [params (repeatedly n-params (new-var!))
             ret-t  (new-var!)]
         (reset! type [:link [:-> params ret-t]])
         [params ret-t]))))
@@ -112,6 +107,23 @@
         (unify! p (infer env a)))
       ret-type)))
 
+(let [identifier? #{'lambda 'let}]
+  (defn ->maybe-var [thing]
+    (if (and (or (symbol?  thing)
+                 (nil?     thing)
+                 (boolean? thing))
+             (not (identifier? thing)))
+      [:var thing]
+      thing)))
+
+(defn translate [form]
+  (match (cond-> form (list? form) vec)
+    ['lambda [& args] body] [:fun args (translate body)]
+    ['let    [b v]    body] [:let b (translate v) (translate body)]
+    [f & args]              [:call (translate f) (mapv translate args)]
+    :else
+    (->maybe-var form)))
+
 (defn constant-lookup [t env]
   (match t
     [:const name] (env name t)
@@ -121,61 +133,73 @@
                                               (constant-lookup a env))])
     [:-> param-types ret-t]
     [:-> (for [p param-types]
-           (constant-lookup p env)) (constant-lookup ret-t env)]))
-
-(def reserved #{:for-all :-> :const :type-app :call :var :let :fun})
-
-(defmulti expand-rule (fn [expr env] (first expr)))
-
-(defn make-constant [x]
-  (walk/postwalk
-   (fn [form]
-     (if (or (and (keyword? form)
-                  (not (reserved form)))
-             (symbol? form))
-       [:const form]
-       form))
-   x))
-
-(defmethod expand-rule :for-all [[_ [& consts] body] env]
-  (let [syms (map second consts)
-        env  (merge env (zipmap syms (repeatedly #(new-generic-var!))))]
-    (constant-lookup body env)))
-
-(def identifier #{'lambda 'let})
-
-(defn ->maybe-var [thing]
-  (if (and (or (symbol?  thing)
-               (nil?     thing)
-               (boolean? thing))
-           (not (identifier thing)))
-    [:var thing]
-    thing))
-
-(defn convert [form]
-  (match (cond-> form (list? form) vec)
-    ['lambda [& args] body] [:fun args (convert body)]
-    ['let    [b v]    body] [:let b (convert v) (convert body)]
-    [f & args]              [:call (convert f) (mapv convert args)]
+           (constant-lookup p env)) (constant-lookup ret-t env)]
     :else
-    (->maybe-var form))
+    t))
 
-  )
+(let [identifier? #{:for-all :-> :type-app}]
+  (defn ->maybe-const [x]
+    (if (not (identifier? x))
+      [:const x]
+      x)))
 
-(let [env {'id   (expand-rule (make-constant [:for-all '[a] [:-> ['a]  'a]]) {})
-           nil   (expand-rule (make-constant [:for-all '[a] [:type-app :list '[a]]]) {})
-           'cons (expand-rule (make-constant [:for-all '[a] [:-> ['a [:type-app :list '[a]]] [:type-app :list '[a]]]]) {})
-           'pair (expand-rule (make-constant  [:for-all '[a b] [:-> '[a b] [:type-app :pair '[a b]]]]) {})
-           'first (expand-rule (make-constant [:for-all '[a b] [:-> [[:type-app :pair '[a b]]] 'a]]) {})
-           'second (expand-rule (make-constant [:for-all '[a b] [:-> [[:type-app :pair '[a b]]] 'b]]) {})
-           'inc     (make-constant [:-> ['int] 'int])
-           'one     [:const 'int]
-           true    [:const 'bool]
-           'map     (expand-rule
-                     (make-constant
-                      [:for-all '[a b] [:-> [[:-> ['a] 'b] [:type-app :list '[a]]] [:type-app :list '[b]]]]) {})
-           }]
+(defn translate-decl [form]
+  (match (cond-> form (list? form) vec)
+    ['for-all [& vars] body]
+    (let [env' (zipmap vars (repeatedly new-generic!))]
+      (constant-lookup (translate-decl body) env'))
+    ['-> [& args] ret] [:-> (mapv translate-decl args) (translate-decl ret)]
+    [ctor [& args]]    [:type-app [:const (keyword ctor)] (mapv translate-decl args)]
+    :else
+    (->maybe-const form)))
 
-  (infer env (convert
-              '((lambda [x] (pair one x)) true)))
+(defn build-env [m]
+  (reduce-kv
+   (fn [env id decl]
+     (assoc env id (translate-decl decl)))
+   {}
+   m))
+
+(defn- final-prettify [form ids]
+  (match form
+    [:unbound id]         (do
+                            (when-not (@ids id)
+                              (swap! ids assoc id (symbol (str (char (+ (int \a) (count @ids)))))))
+                            (clojure.walk/postwalk-replace
+                             {[:unbound id] (@ids id)} form))
+    [:type-app ctor args] [(symbol ctor) (mapv #(final-prettify % ids) args)]
+    [:-> args ret]        (list '-> (mapv #(final-prettify % ids) args) (final-prettify ret ids))
+    :else                 form))
+
+(let [junk? (comp #{:const :link} first)]
+  (defn- prettify-output [form]
+    (let [form (->> form
+                    (clojure.walk/prewalk #(cond-> % (atom? %) deref))
+                    (clojure.walk/postwalk
+                     (fn [form]
+                       (let [form (if (and (vector? form) (junk? form))
+                                    (subvec form 1)
+                                    form)]
+                         (if (and (vector? form) (= 1 (count form)))
+                           (first form)
+                           form)))))
+          ids  (atom {})]
+      (final-prettify form ids))
+    ))
+
+(let [env (build-env '{id     (for-all [a]   (-> [a] a))
+                       nil    (for-all [a]   [list [a]])
+                       cons   (for-all [a]   (-> [a [list [a]]] [list [a]]))
+                       map    (for-all [a b] (-> [[-> [a] b] [list [a]]] [list [b]]))
+                       pair   (for-all [a b] (-> [a b] [pair [a b]]))
+                       first  (for-all [a b] (-> [[pair [a b]]] a))
+                       second (for-all [a b] (-> [[pair [a b]]] b))
+                       inc    [-> [int] int]
+                       zero   int
+                       succ   [-> [int] int]
+                       true   bool
+                       })]
+
+  (prettify-output (infer env (translate
+                               'map)))
   )
