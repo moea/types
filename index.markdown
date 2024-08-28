@@ -88,8 +88,7 @@ It's most helpful if we show the frontend of the inference engine first, which t
       [:const x]
       x)))
 
-;; Transform a vaguely human-readable type declaration into something
-;; the interpreter can deal with
+;; Transform a vaguely human-readable type decl into something the type checker can deal with
 
 (defn translate-decl [form]
   (match (cond-> form (list? form) vec)
