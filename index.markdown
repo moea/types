@@ -291,17 +291,17 @@ A further demonstration of obfuscation and generics:
 
 ```clojure
 (infer
-  (build-env '{cell   (for-all [a b] (-> [a b] [cell [a b]]))
-               first  (for-all [a b] (-> [[cell [a b]]] a))
-               second (for-all [a b] (-> [[cell [a b]]] b))
+  (build-env '{pair   (for-all [a b] (-> [a b] [pair [a b]]))
+               first  (for-all [a b] (-> [[pair [a b]]] a))
+               second (for-all [a b] (-> [[pair [a b]]] b))
                empty  (for-all [a]   [list [a]])
                map    (for-all [a b] (-> [(-> [a] b) [list [a]]] [list [b]]))
                cons   (for-all [a]   (-> [a [list [a]]] [list [a]]))
                one    int
                zero   int
                t      bool})
- (translate '(let [l (cons (cell zero t) empty)]
+ (translate '(let [l (cons (pair zero t) empty)]
                (map ((lambda [f] (lambda [c] (f c))) first)
-                 (cons (cell one t) l)))))
+                 (cons (pair one t) l)))))
 ;; => [list[int]]
 ```
