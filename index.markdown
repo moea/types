@@ -157,7 +157,8 @@ Similarly, here, we're going to `(declare unify!)` and put its declaration last,
 (defn maybe-deref [x]
   (cond-> x (atom? x) deref))
 
-;; instantiate type variables across the given term for an inference run
+;; Instantiate type variables across the given term for an inference run.
+;; This is just a memoized conversion of generics into unbound variables.
 
 (defn instantiate [t]
   (let [id->var (volatile! {})]
