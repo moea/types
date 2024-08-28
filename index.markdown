@@ -82,7 +82,7 @@ It's most helpful if we show the frontend of the inference engine first, which t
            (constant-lookup p env)) (constant-lookup ret-t env)]
     :else t))
 
-(let [identifier? #{:for-all :-> :type-app}]
+(let [identifier? #{:-> :type-app}]
   (defn ->maybe-const [x]
     (if (not (identifier? x))
       [:const x]
