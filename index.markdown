@@ -67,6 +67,8 @@ It's most helpful if we show the frontend of the inference engine first, which t
 ;;  [:var zero]
 ;;  [:call [:fun [y] [:call [:var succ] [[:var y]]]] [[:var x]]]]
 
+;; Now we move on to type declarations
+
 (defn constant-lookup [t env]
   (match t
     [:const name] (env name t)
