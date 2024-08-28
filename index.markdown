@@ -218,11 +218,12 @@ What happens in this case is `translate` returns `[:call [:var succ] [[:var  zer
 infer's destructuring clause for `:fun` is pretty simple, per above:
 
 ```clojure
-[:fun params body]
-(let [params->types (zipmap params (repeatedly new-var!))
-      fn-env        (merge env params->types)
-      ret-t         (infer fn-env body)]
-  [:-> (mapv params->types params) ret-t])
+(match ...
+  [:fun params body]
+  (let [params->types (zipmap params (repeatedly new-var!))
+        fn-env        (merge env params->types)
+        ret-t         (infer fn-env body)]
+    [:-> (mapv params->types params) ret-t]))
 ```
 
 So, for each parameter, we mint a new atom pointing at an unbound variable, stuff those into the top of the environment, and then infer the body term within that environment, returning an arrow from the parameter types to return type.  Inside the recursive infer call, x will be looked up in the env, and the dispatch code for :call will invoke match-fn-type!:
