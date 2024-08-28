@@ -53,6 +53,8 @@ It's most helpful if we show the frontend of the inference engine first, which t
       [:var thing]
       thing)))
 
+;; program elements are tagged vectors of :var, :fun, :let or :call
+
 (defn translate [form]
   (match (cond-> form (list? form) vec)
     ['lambda [& args] body] [:fun args (translate body)]
@@ -67,7 +69,7 @@ It's most helpful if we show the frontend of the inference engine first, which t
 ;;  [:var zero]
 ;;  [:call [:fun [y] [:call [:var succ] [[:var y]]]] [[:var x]]]]
 
-;; Now we move on to type declarations
+;; Now we move on to type declarations, tagged vectors of :const, :type-app, or :-> (arrow)
 
 (defn constant-lookup [t env]
   (match t
