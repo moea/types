@@ -205,7 +205,7 @@ Let's try
 ;; => int
 ```
 
-What happens in this case is `translate` returns `[:call [:var succ] [:var  zero]]`. `infer` gives us the return type of `succ` after successfully unifying its single `int` parameter with the `int` zero, so we get back `int`.  Without looking at it, we can reason that unify doesn't do any work when its parameters are identical.  Now, what about that hairy clause at the end of `match-fn-type!` below this exposition?  Consider the expression `((lambda [x] (x zero)) succ)`, or `[:call [:fun [x] [:call [:var x] [[:var zero]]]] [[:var succ]]]` (which evaluates to int).  infer's destructuring clause for `:fun` is pretty simple, per above:
+What happens in this case is `translate` returns `[:call [:var succ] [[:var  zero]]`. `infer` gives us the return type of `succ` after successfully unifying its single `int` parameter with the `int` zero, so we get back `int`.  Without looking at it, we can reason that unify doesn't do any work when its parameters are identical.  Now, what about that hairy clause at the end of `match-fn-type!` below this exposition?  Consider the expression `((lambda [x] (x zero)) succ)`, or `[:call [:fun [x] [:call [:var x] [[:var zero]]]] [[:var succ]]]` (which evaluates to int).  infer's destructuring clause for `:fun` is pretty simple, per above:
 
 ```clojure
 [:fun params body]
