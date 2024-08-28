@@ -210,7 +210,12 @@ Let's try
 ;; => int
 ```
 
-What happens in this case is `translate` returns `[:call [:var succ] [[:var  zero]]]`. `infer` gives us the return type of `succ` after successfully unifying its single `int` parameter with the `int` zero, so we get back `int`.  Without looking at it, we can reason that unify doesn't do any work when its parameters are identical.  Now, what about that hairy clause at the end of `match-fn-type!` below this exposition?  Consider the expression `((lambda [x] (x zero)) succ)`, or `[:call [:fun [x] [:call [:var x] [[:var zero]]]] [[:var succ]]]` (which evaluates to int).  infer's destructuring clause for `:fun` is pretty simple, per above:
+What happens in this case is `translate` returns `[:call [:var succ] [[:var  zero]]]`. `infer` gives us the return type of `succ` after successfully unifying its single `int` parameter with the `int` zero, so we get back `int`.  Without looking at it, we can reason that unify doesn't do any work when its parameters are identical.  Now, what about that hairy clause at the end of `match-fn-type!` below this exposition?  Consider the expression `((lambda [x] (x zero)) succ) => int`, or:
+<br><br>
+`[:call [:fun [x] [:call [:var x] [[:var zero]]]] [[:var succ]]]`
+<br><br>
+
+infer's destructuring clause for `:fun` is pretty simple, per above:
 
 ```clojure
 [:fun params body]
@@ -220,7 +225,7 @@ What happens in this case is `translate` returns `[:call [:var succ] [[:var  zer
   [:-> (mapv params->types params) ret-t])
 ```
 
-So, for each parameter, we mint a new atom pointing at an unbound variable, stuff those into the top of the environment, and then infer the body term within that environment, returning an arrow from the parameter types to return type.  Inside the recursive infer call, x will be looked up in the env, and the dispatch code for :call will invoke match-fn-type!, whose :unbound guard will set the contents of the atom to a :link to a function of the expected number of unbound parameters to an unbound return type, so (-> [a] b) in our DSL.  Here's the offending clause, before I type too much:
+So, for each parameter, we mint a new atom pointing at an unbound variable, stuff those into the top of the environment, and then infer the body term within that environment, returning an arrow from the parameter types to return type.  Inside the recursive infer call, x will be looked up in the env, and the dispatch code for :call will invoke match-fn-type!:
 
 
 ```clojure
@@ -236,6 +241,8 @@ So, for each parameter, we mint a new atom pointing at an unbound variable, stuf
         (reset! type [:link [:-> params ret-t]])
         [params ret-t]))))
 ```
+
+Whose :unbound guard will set the contents of the atom to a :link to a function of the expected number of unbound parameters to an unbound return type, so (-> [a] b) in our DSL.
 
 We need to talk about unification a bit.  We can unify unbound variables with anything except for unbound variables.  So when we apply (x zero) in our lambda, we unify the single parameter of x with [:const int], the type of zero.  At this point x is (-> [int] b).  When we apply our lambda to succ, we need to unify (-> [int] b) with the type of succ, (-> [int] int).  As "b" just denotes an unbound variable, this unification is trivial.  But it needn't go as smoothly:
 
