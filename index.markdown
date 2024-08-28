@@ -286,9 +286,9 @@ A further demonstration of obfuscation and generics:
                cons   (for-all [a]   (-> [a [list [a]]] [list [a]]))
                one    int
                zero   int
-               true   bool})
- (translate '(let [l (cons (cell zero true) empty)]
+               t      bool})
+ (translate '(let [l (cons (cell zero t) empty)]
                (map ((lambda [f] (lambda [c] (f c))) first)
-                 (cons (cell one true) l)))))
+                 (cons (cell one t) l)))))
 ;; => [list[int]]
 ```
