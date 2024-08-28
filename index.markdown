@@ -290,5 +290,5 @@ A further demonstration of obfuscation and generics:
  (translate '(let [l (cons (cell zero true) empty)]
                (map ((lambda [f] (lambda [c] (f c))) first)
                  (cons (cell one true) l)))))
-;; => list[int]
+;; => [list[int]]
 ```
